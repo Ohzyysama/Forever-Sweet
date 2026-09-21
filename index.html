@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#F9F8F6">
+  <title>Forever Sweet · 我们的纪念</title>
+  <meta name="description" content="只属于我们两个人的生活札记。">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Karla:wght@400;500&family=Noto+Sans+SC:wght@400;500&family=Noto+Serif+SC:wght@400;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="site-nav" id="siteNav">
+    <div class="nav-inner">
+      <a class="logo" href="#/">Forever&nbsp;Sweet</a>
+      <button class="nav-toggle" id="navToggle" aria-label="打开菜单" aria-expanded="false">
+        <span></span><span></span>
+      </button>
+      <div class="nav-links" id="navLinks">
+        <a href="#/" data-nav="home">首页</a>
+        <a href="#/posts" data-nav="posts">记录</a>
+        <a href="#/new" data-nav="new" class="nav-auth">发布</a>
+        <a href="#/login" id="navAuthLink">登录</a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="app" aria-live="polite"></main>
+
+  <footer class="site-footer">
+    <div class="footer-inner">
+      <div>
+        <div class="footer-logo">Forever Sweet</div>
+        <p class="footer-tag">A journal for two · 只属于我们的纪念</p>
+      </div>
+      <p class="footer-copy">© <span id="year"></span> · Made with love</p>
+    </div>
+  </footer>
+
+  <div class="toast-wrap" id="toast" aria-live="assertive"></div>
+
+  <noscript>
+    <p style="padding:120px 24px;text-align:center;">本站需要启用 JavaScript 才能使用。</p>
+  </noscript>
+
+  <script>
+    // Supabase SDK 多源容灾加载：国内直连 cdn.jsdelivr.net 常不稳定，逐个尝试直到成功
+    (function () {
+      var srcs = [
+        "vendor/supabase.min.js",
+        "https://fastly.jsdelivr.net/npm/@supabase/supabase-js@2",
+        "https://gcore.jsdelivr.net/npm/@supabase/supabase-js@2",
+        "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
+        "https://unpkg.com/@supabase/supabase-js@2"
+      ];
+      var i = 0;
+      (function next() {
+        if (i >= srcs.length || window.supabase) return;
+        var s = document.createElement("script");
+        s.src = srcs[i++];
+        s.onload = function () { if (!window.supabase) next(); };
+        s.onerror = function () { next(); };
+        document.head.appendChild(s);
+      })();
+    })();
+  </script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
