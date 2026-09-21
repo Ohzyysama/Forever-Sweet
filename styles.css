@@ -460,14 +460,15 @@ body.logged-in .nav-auth { display: inline-block; }
 .comment-del {
   background: transparent;
   border: 0;
-  font-size: 0.7rem;
+  border-bottom: 1px solid var(--fg-20);
+  font-size: 0.72rem;
   letter-spacing: 0.12em;
-  color: var(--fg-40);
+  color: var(--fg-60);
   cursor: pointer;
   padding: 0.2rem 0;
-  transition: color 0.3s;
+  transition: color 0.3s, border-color 0.3s;
 }
-.comment-del:hover { color: var(--fg); }
+.comment-del:hover { color: var(--fg); border-color: var(--fg); }
 .comment-del:disabled { opacity: 0.4; cursor: default; }
 
 /* ---------- 表单 ---------- */
