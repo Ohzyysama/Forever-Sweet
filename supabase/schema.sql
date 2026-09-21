@@ -54,11 +54,13 @@ create policy posts_insert on public.posts for insert with check (auth.role() = 
 create policy posts_update on public.posts for update using (auth.role() = 'authenticated');
 create policy posts_delete on public.posts for delete using (auth.role() = 'authenticated');
 
--- comments：所有人可读、可发（无需登录，且不存昵称）
+-- comments：所有人可读、可发（无需登录，且不存昵称）；仅登录用户可删除
 drop policy if exists comments_read   on public.comments;
 drop policy if exists comments_insert on public.comments;
+drop policy if exists comments_delete on public.comments;
 create policy comments_read   on public.comments for select using (true);
 create policy comments_insert on public.comments for insert with check (true);
+create policy comments_delete on public.comments for delete using (auth.role() = 'authenticated');
 
 -- likes：所有人可读、可点赞 / 取消点赞
 drop policy if exists likes_read   on public.likes;

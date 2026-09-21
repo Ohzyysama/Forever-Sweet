@@ -378,10 +378,16 @@ async function postsPage() {
 /* ---------- 视图：详情 ---------- */
 
 function commentItem(c) {
+  const del = currentSession
+    ? `<button class="comment-del" data-del-comment="${c.id}" aria-label="删除评论">删除</button>`
+    : "";
   return `
     <div class="comment">
       <p class="comment-text">${bodyHtml(c.content)}</p>
-      <span class="comment-time label">${timeAgo(c.created_at)}</span>
+      <div class="comment-foot">
+        <span class="comment-time label">${timeAgo(c.created_at)}</span>
+        ${del}
+      </div>
     </div>`;
 }
 
@@ -525,6 +531,26 @@ function bindPostDetail(postId) {
       } else {
         input.value = "";
         btn.disabled = false;
+        refreshComments(postId);
+      }
+    });
+  }
+
+  const commentList = document.getElementById("commentList");
+  if (commentList) {
+    commentList.addEventListener("click", async (e) => {
+      const btn = e.target.closest("[data-del-comment]");
+      if (!btn) return;
+      const id = btn.dataset.delComment;
+      btn.disabled = true;
+      btn.textContent = "删除中…";
+      const { error } = await sb.from("comments").delete().eq("id", id);
+      if (error) {
+        toast("删除失败");
+        btn.disabled = false;
+        btn.textContent = "删除";
+      } else {
+        toast("已删除");
         refreshComments(postId);
       }
     });
