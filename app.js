@@ -10,9 +10,16 @@ const navAuthLink = document.getElementById("navAuthLink");
 let sb = null;
 let currentSession = null;
 let composeState = null; // { id, existing, newFiles:[{file,url}], removed }
+let celebrationShown = false;
 
 // 在一起的纪念日：2026 年 3 月 8 日（想改日期就改这里）
 const TOGETHER_SINCE = new Date(2026, 2, 8);
+
+// 农历生日（month/day 是农历月份和日期）
+const LUNAR_BIRTHDAYS = [
+  { month: 7, day: 20, label: "生日 · 农历七月二十" },
+  { month: 8, day: 3,  label: "生日 · 农历八月初三" },
+];
 
 /* ---------- 工具函数 ---------- */
 
@@ -64,6 +71,163 @@ function daysTogether() {
   const now = new Date();
   const b = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.max(0, Math.round((b - a) / 86400000));
+}
+
+function startOfDay(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function addDays(d, n) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+}
+
+function lunarBirthdayToSolar(year, month, day) {
+  if (!window.Lunar) return null;
+  try {
+    const solar = Lunar.fromYmd(year, month, day).getSolar();
+    return new Date(solar.getYear(), solar.getMonth() - 1, solar.getDay());
+  } catch (e) {
+    return null;
+  }
+}
+
+function milestoneEvents() {
+  const today = startOfDay(new Date());
+  const events = [];
+
+  // 100 倍数天（100、200、300…）
+  const daysNow = daysTogether();
+  const first = Math.max(100, Math.ceil(daysNow / 100) * 100);
+  for (let n = first; n <= daysNow + 730; n += 100) {
+    events.push({ date: addDays(TOGETHER_SINCE, n), name: `在一起 ${n} 天` });
+  }
+
+  // 满月（每个月 8 号）
+  for (let i = 1; i <= 36; i++) {
+    events.push({
+      date: new Date(TOGETHER_SINCE.getFullYear(), TOGETHER_SINCE.getMonth() + i, TOGETHER_SINCE.getDate()),
+      name: `在一起满 ${i} 个月`,
+    });
+  }
+
+  // 满年（每年 3 月 8 日）
+  for (let y = TOGETHER_SINCE.getFullYear() + 1; y <= TOGETHER_SINCE.getFullYear() + 10; y++) {
+    events.push({
+      date: new Date(y, TOGETHER_SINCE.getMonth(), TOGETHER_SINCE.getDate()),
+      name: `在一起满 ${y - TOGETHER_SINCE.getFullYear()} 年`,
+    });
+  }
+
+  // 农历生日（今年 + 明年）
+  if (window.Lunar) {
+    for (const bd of LUNAR_BIRTHDAYS) {
+      for (let y = today.getFullYear(); y <= today.getFullYear() + 1; y++) {
+        const solar = lunarBirthdayToSolar(y, bd.month, bd.day);
+        if (solar) events.push({ date: solar, name: bd.label });
+      }
+    }
+  }
+
+  return events;
+}
+
+function celebrationsToday() {
+  const today = startOfDay(new Date()).getTime();
+  return milestoneEvents().filter((e) => e.date.getTime() === today);
+}
+
+function startFireworks(canvas) {
+  const ctx = canvas.getContext("2d");
+  let w = (canvas.width = window.innerWidth);
+  let h = (canvas.height = window.innerHeight);
+
+  const colors = ["#E8E2D6", "#C9A24B", "#D46A6A", "#6A9BBD", "#A97BC4", "#E0A458", "#7FAE9B", "#D98C7A"];
+  const particles = [];
+
+  function burst(x, y) {
+    const n = 36 + Math.floor(Math.random() * 28);
+    for (let i = 0; i < n; i++) {
+      const ang = (Math.PI * 2 * i) / n + Math.random() * 0.4;
+      const speed = 2 + Math.random() * 5;
+      particles.push({
+        x, y,
+        vx: Math.cos(ang) * speed,
+        vy: Math.sin(ang) * speed,
+        life: 1,
+        decay: 0.008 + Math.random() * 0.016,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: 1.5 + Math.random() * 2.5,
+      });
+    }
+  }
+
+  let last = 0;
+  let raf;
+  function frame(t) {
+    ctx.clearRect(0, 0, w, h);
+    if (t - last > 360) {
+      last = t;
+      burst(Math.random() * w, h * (0.18 + Math.random() * 0.38));
+    }
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.06;
+      p.vx *= 0.99;
+      p.vy *= 0.99;
+      p.life -= p.decay;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    raf = requestAnimationFrame(frame);
+  }
+  raf = requestAnimationFrame(frame);
+
+  window.addEventListener("resize", () => {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+  });
+
+  return () => cancelAnimationFrame(raf);
+}
+
+function showCelebration(names) {
+  const msg = names.join(" · ");
+  const overlay = document.createElement("div");
+  overlay.className = "celebration";
+  overlay.innerHTML = `
+    <canvas class="celebration-canvas"></canvas>
+    <div class="celebration-card">
+      <span class="label">纪念日</span>
+      <p class="celebration-title">${escapeHtml(msg)}</p>
+      <p class="celebration-sub">Happy together</p>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  let stop = null;
+  if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    stop = startFireworks(overlay.querySelector("canvas"));
+  }
+
+  setTimeout(() => {
+    if (stop) stop();
+    overlay.classList.add("hide");
+    setTimeout(() => overlay.remove(), 650);
+  }, 4200);
+}
+
+function maybeCelebrate() {
+  if (celebrationShown) return;
+  const todays = celebrationsToday();
+  if (todays.length) {
+    celebrationShown = true;
+    showCelebration(todays.map((e) => e.name));
+  }
 }
 
 function timeAgo(iso) {
@@ -220,6 +384,50 @@ async function toggleLike(postId, liked) {
   }
 }
 
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("图片加载失败"));
+    img.src = url;
+  });
+}
+
+// 前端压缩图片：最长边缩到 maxDim、转 JPEG 压缩质量 quality
+// 压缩后反而更大的话返回原文件
+async function compressImage(file, maxDim = 1920, quality = 0.82) {
+  if (file.type === "image/gif") return file; // 动图保持原样
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch (e) {
+    const url = URL.createObjectURL(file);
+    try {
+      bitmap = await loadImage(url);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+  const w0 = bitmap.width || bitmap.naturalWidth;
+  const h0 = bitmap.height || bitmap.naturalHeight;
+  if (!w0 || !h0) return file;
+  const scale = Math.min(1, maxDim / Math.max(w0, h0));
+  if (scale === 1 && file.size <= 400 * 1024) return file; // 已经够小
+  const w = Math.max(1, Math.round(w0 * scale));
+  const h = Math.max(1, Math.round(h0 * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", quality));
+  if (!blob || blob.size >= file.size) return file;
+  const name = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+  return new File([blob], name, { type: "image/jpeg" });
+}
+
 async function uploadImages(files) {
   const urls = [];
   const prefix = currentSession && currentSession.user ? currentSession.user.id : "anon";
@@ -308,6 +516,7 @@ async function home() {
     heroMarkup() + `<section class="featured container" id="featured">${loading()}</section>`;
   try {
     const posts = await fetchFeatured();
+    maybeCelebrate();
     const ids = posts.map((p) => p.id);
     const [{ counts, mine }, cc] = await Promise.all([
       fetchLikeMeta(ids),
@@ -357,6 +566,45 @@ function postRow(p, i, likes, comments) {
     </article>`;
 }
 
+function groupPostsByMonth(posts) {
+  const years = [];
+  const yearMap = new Map();
+  for (const p of posts) {
+    const d = new Date(p.created_at);
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    if (!yearMap.has(y)) {
+      const yg = { year: y, months: [] };
+      yearMap.set(y, yg);
+      years.push(yg);
+    }
+    const yg = yearMap.get(y);
+    let mg = yg.months.find((x) => x.month === m);
+    if (!mg) {
+      mg = { month: m, posts: [] };
+      yg.months.push(mg);
+    }
+    mg.posts.push(p);
+  }
+  return years;
+}
+
+function archiveMarkup(posts, counts, cc) {
+  const groups = groupPostsByMonth(posts);
+  let n = 0;
+  return groups.map((yg) => `
+    <div class="archive-year">
+      <h2 class="archive-year-title">${yg.year}</h2>
+      ${yg.months.map((mg) => `
+        <div class="archive-month">
+          <div class="archive-month-head"><span class="label">${mg.month} 月 · ${mg.posts.length} 篇</span></div>
+          ${mg.posts.map((p) => postRow(p, n++, counts[p.id] || 0, cc[p.id] || 0)).join("")}
+        </div>
+      `).join("")}
+    </div>
+  `).join("");
+}
+
 async function postsPage() {
   app.innerHTML =
     postsHeadMarkup() +
@@ -371,13 +619,69 @@ async function postsPage() {
     const countEl = document.getElementById("postCount");
     if (countEl) countEl.textContent = `共 ${posts.length} 篇记录`;
     document.getElementById("postList").innerHTML = posts.length
-      ? `<div class="post-list">${posts.map((p, i) => postRow(p, i, counts[p.id] || 0, cc[p.id] || 0)).join("")}</div>`
+      ? archiveMarkup(posts, counts, cc)
       : `<div class="empty">
            <p class="empty-text">还没有任何记录。</p>
            <p class="empty-hint italic">登录后写下第一篇吧。</p>
          </div>`;
   } catch (e) {
     document.getElementById("postList").innerHTML = errorMarkup();
+  }
+}
+
+/* ---------- 视图：照片墙 ---------- */
+
+function galleryItem(it) {
+  return `
+    <figure class="gallery-item">
+      <a class="gallery-media" href="#/post/${it.postId}">
+        <img src="${escapeHtml(it.url)}" alt="${escapeHtml(it.title)}" loading="lazy">
+      </a>
+      <figcaption class="gallery-caption">
+        <span class="gallery-title">${escapeHtml(it.title)}</span>
+        <span class="label">${formatDate(it.date)}</span>
+      </figcaption>
+    </figure>`;
+}
+
+function galleryMarkup(items) {
+  if (!items.length) {
+    return `
+      <section class="container">
+        <div class="empty">
+          <span class="label">Gallery · 照片墙</span>
+          <p class="empty-text">还没有照片。</p>
+          <p class="empty-hint italic">发布带图片的文章后，照片会出现在这里。</p>
+          <a class="btn-ghost" href="#/posts">去记录页看看</a>
+        </div>
+      </section>`;
+  }
+  return `
+    <section class="container page-head">
+      <span class="label">Gallery · 照片墙</span>
+      <h1 class="page-title">我们的照片</h1>
+      <div class="page-head-row">
+        <p class="sub italic">共 ${items.length} 张照片</p>
+      </div>
+    </section>
+    <section class="container">
+      <div class="gallery-grid">${items.map(galleryItem).join("")}</div>
+    </section>`;
+}
+
+async function galleryPage() {
+  app.innerHTML = `<section class="container">${loading()}</section>`;
+  try {
+    const posts = await fetchPosts();
+    const items = [];
+    for (const p of posts) {
+      for (const u of (p.images || [])) {
+        items.push({ url: u, postId: p.id, title: displayTitle(p), date: p.created_at });
+      }
+    }
+    app.innerHTML = galleryMarkup(items);
+  } catch (e) {
+    app.innerHTML = `<section class="container">${errorMarkup()}</section>`;
   }
 }
 
@@ -687,12 +991,14 @@ function bindCompose() {
   const fileInput = document.getElementById("pImages");
   const previews = document.getElementById("previews");
 
-  fileInput.addEventListener("change", () => {
-    for (const f of fileInput.files) {
-      composeState.newFiles.push({ file: f, url: URL.createObjectURL(f) });
-    }
+  fileInput.addEventListener("change", async () => {
+    const files = Array.from(fileInput.files);
     fileInput.value = "";
-    renderPreviews();
+    for (const f of files) {
+      const compressed = await compressImage(f);
+      composeState.newFiles.push({ file: compressed, url: URL.createObjectURL(compressed) });
+      renderPreviews();
+    }
   });
 
   previews.addEventListener("click", (e) => {
@@ -910,6 +1216,7 @@ async function render() {
   const id = parts[1];
 
   if (!seg) return home();
+  if (seg === "gallery") return galleryPage();
   if (seg === "posts") return postsPage();
   if (seg === "post" && id) return postPage(id);
   if (seg === "new") return newPostPage();
