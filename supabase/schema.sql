@@ -83,7 +83,68 @@ create policy images_insert on storage.objects for insert with check (bucket_id 
 create policy images_delete on storage.objects for delete using (bucket_id = 'images' and auth.role() = 'authenticated');
 
 -- ============================================================
--- 5) 可选：示例数据（仅当 posts 表为空时插入，方便第一次打开就能看到效果）
+-- 5) 显示名字（账户 → 帖子/评论作者）
+--    幂等，可重复执行
+-- ============================================================
+
+-- 用户档案表：id = auth.users.id，display_name = 显示名字
+create table if not exists public.profiles (
+  id           uuid primary key references auth.users(id) on delete cascade,
+  display_name text not null default '',
+  updated_at   timestamptz not null default now()
+);
+
+alter table public.profiles enable row level security;
+
+drop policy if exists profiles_read   on public.profiles;
+drop policy if exists profiles_insert on public.profiles;
+drop policy if exists profiles_update on public.profiles;
+create policy profiles_read   on public.profiles for select using (auth.uid() = id);
+create policy profiles_insert on public.profiles for insert with check (auth.uid() = id);
+create policy profiles_update on public.profiles for update using (auth.uid() = id);
+
+-- 给 posts / comments 增加作者字段（author_name 允许为空，避免未填作者时报错）
+alter table public.posts    add column if not exists author_id   uuid;
+alter table public.posts    add column if not exists author_name text default '';
+alter table public.posts    alter column author_name drop not null;
+alter table public.comments add column if not exists author_id   uuid;
+alter table public.comments add column if not exists author_name text default '';
+alter table public.comments alter column author_name drop not null;
+
+-- 发布帖子时自动填作者
+create or replace function public.set_post_author()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  new.author_id   := auth.uid();
+  new.author_name := coalesce((select display_name from public.profiles where id = auth.uid()), '');
+  return new;
+end $$;
+
+drop trigger if exists trg_set_post_author on public.posts;
+create trigger trg_set_post_author before insert on public.posts
+  for each row execute function public.set_post_author();
+
+-- 发评论时自动填作者（未登录评论 auth.uid() 为空 → 不显示名字）
+create or replace function public.set_comment_author()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  new.author_id   := auth.uid();
+  new.author_name := coalesce((select display_name from public.profiles where id = auth.uid()), '');
+  return new;
+end $$;
+
+drop trigger if exists trg_set_comment_author on public.comments;
+create trigger trg_set_comment_author before insert on public.comments
+  for each row execute function public.set_comment_author();
+
+-- 为已存在的用户补建档案
+insert into public.profiles (id, display_name)
+select id, coalesce(split_part(email, '@', 1), '')
+from auth.users
+on conflict (id) do nothing;
+
+-- ============================================================
+-- 6) 可选：示例数据（仅当 posts 表为空时插入，方便第一次打开就能看到效果）
 --    不需要可整段删除，或直接跳过不执行。
 -- ============================================================
 insert into public.posts (title, body, featured)

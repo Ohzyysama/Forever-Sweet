@@ -50,6 +50,10 @@ function displayTitle(p) {
   return "未命名";
 }
 
+function postAuthor(p) {
+  return (p.author_name || "").trim();
+}
+
 function formatDate(iso) {
   const d = new Date(iso);
   return `${d.getFullYear()} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日`;
@@ -253,6 +257,7 @@ function heroMarkup() {
 function featureRow(p, i, likes, comments) {
   const flip = i % 2 === 1 ? " flip" : "";
   const img = p.images && p.images.length ? p.images[0] : null;
+  const author = postAuthor(p);
   const media = img
     ? `<a class="feature-media" href="#/post/${p.id}">
         <div class="media-frame">
@@ -265,7 +270,7 @@ function featureRow(p, i, likes, comments) {
     <article class="feature${flip}${noMedia}">
       ${media}
       <div class="feature-body">
-        <span class="label">${formatDate(p.created_at)}</span>
+        <span class="label">${author ? escapeHtml(author) + " · " : ""}${formatDate(p.created_at)}</span>
         <h3 class="feature-title"><a href="#/post/${p.id}">${escapeHtml(displayTitle(p))}</a></h3>
         <p class="feature-excerpt">${escapeHtml(excerpt(p.body))}</p>
         <div class="feature-meta">
@@ -333,6 +338,7 @@ function postsHeadMarkup() {
 
 function postRow(p, i, likes, comments) {
   const img = p.images && p.images.length ? p.images[0] : null;
+  const author = postAuthor(p);
   const thumb = img
     ? `<div class="row-thumb"><img src="${escapeHtml(img)}" alt="" loading="lazy"></div>`
     : "";
@@ -341,7 +347,7 @@ function postRow(p, i, likes, comments) {
       <a class="post-row-inner" href="#/post/${p.id}">
         <span class="row-num">${pad(i + 1)}</span>
         <div class="row-text">
-          <span class="label">${formatDate(p.created_at)}</span>
+          <span class="label">${author ? escapeHtml(author) + " · " : ""}${formatDate(p.created_at)}</span>
           <h3 class="row-title">${escapeHtml(displayTitle(p))}</h3>
           <p class="row-excerpt">${escapeHtml(excerpt(p.body, 160))}</p>
           <span class="row-meta">♥ ${likes} · ${comments} 条评论</span>
@@ -378,20 +384,23 @@ async function postsPage() {
 /* ---------- 视图：详情 ---------- */
 
 function commentItem(c) {
+  const author = (c.author_name || "").trim();
   const del = currentSession
     ? `<button class="comment-del" data-del-comment="${c.id}" aria-label="删除评论">删除</button>`
     : "";
   return `
     <div class="comment">
-      <p class="comment-text">${bodyHtml(c.content)}</p>
-      <div class="comment-foot">
+      <div class="comment-head">
+        ${author ? `<span class="comment-author">${escapeHtml(author)}</span>` : ""}
         <span class="comment-time label">${timeAgo(c.created_at)}</span>
-        ${del}
       </div>
+      <p class="comment-text">${bodyHtml(c.content)}</p>
+      ${del ? `<div class="comment-foot">${del}</div>` : ""}
     </div>`;
 }
 
 function postDetailMarkup(p, comments, likes, liked) {
+  const author = postAuthor(p);
   const images = (p.images || [])
     .map((u) => `<img src="${escapeHtml(u)}" alt="" loading="lazy">`)
     .join("");
@@ -404,7 +413,7 @@ function postDetailMarkup(p, comments, likes, liked) {
     <section class="container">
       <article class="article">
         <header class="article-head">
-          <span class="label">${formatDate(p.created_at)}${p.featured ? " · 精选" : ""}</span>
+          <span class="label">${author ? escapeHtml(author) + " · " : ""}${formatDate(p.created_at)}${p.featured ? " · 精选" : ""}</span>
           <h1 class="article-title">${escapeHtml(displayTitle(p))}</h1>
         </header>
         <div class="article-body">${bodyHtml(p.body)}</div>
@@ -791,6 +800,66 @@ function loginPage() {
   });
 }
 
+/* ---------- 视图：账户（设置显示名字） ---------- */
+
+function accountMarkup(email) {
+  return `
+    <section class="container">
+      <form class="login" id="accountForm">
+        <h1 class="page-title">账户</h1>
+        <p class="sub italic">${escapeHtml(email)}</p>
+        <div class="field">
+          <input id="aName" type="text" placeholder=" " class="peer" autocomplete="off" maxlength="30">
+          <label for="aName">显示名字</label>
+        </div>
+        <p class="form-error" id="acctMsg"></p>
+        <div class="form-actions">
+          <button class="btn" type="submit">保存名字</button>
+          <button class="btn-ghost" type="button" id="logoutBtn">退出登录</button>
+        </div>
+      </form>
+    </section>`;
+}
+
+function accountPage() {
+  if (!currentSession) {
+    toast("请先登录");
+    location.hash = "#/login";
+    return;
+  }
+  const user = currentSession.user;
+  app.innerHTML = accountMarkup(user.email || "");
+  bindAccount(user);
+}
+
+function bindAccount(user) {
+  const nameInput = document.getElementById("aName");
+  sb.from("profiles").select("display_name").eq("id", user.id).maybeSingle()
+    .then(({ data }) => { nameInput.value = (data && data.display_name) || ""; })
+    .catch(() => {});
+
+  document.getElementById("accountForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = nameInput.value.trim();
+    const msg = document.getElementById("acctMsg");
+    const btn = e.target.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    const { error } = await sb.from("profiles").upsert({ id: user.id, display_name: name });
+    if (error) {
+      msg.textContent = "保存失败：" + (error.message || error);
+      btn.disabled = false;
+    } else {
+      toast("名字已保存");
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById("logoutBtn").addEventListener("click", async () => {
+    await sb.auth.signOut();
+    location.hash = "#/";
+  });
+}
+
 /* ---------- 视图：未配置 / 404 ---------- */
 
 function setupMarkup() {
@@ -845,6 +914,7 @@ async function render() {
   if (seg === "post" && id) return postPage(id);
   if (seg === "new") return newPostPage();
   if (seg === "edit" && id) return editPostPage(id);
+  if (seg === "account") return accountPage();
   if (seg === "login") return loginPage();
   return (app.innerHTML = notFoundMarkup());
 }
